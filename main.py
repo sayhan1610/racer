@@ -6,39 +6,67 @@ import sys
 pygame.init()
 
 # Constants
-WIDTH, HEIGHT = 800, 600
+WIDTH, HEIGHT = 400, 600
 FPS = 60
-CAR_WIDTH, CAR_HEIGHT = 50, 90
+CAR_WIDTH, CAR_HEIGHT = 50, 50
 OBSTACLE_WIDTH, OBSTACLE_HEIGHT = 50, 50
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
-RED = (255, 0, 0)
-GREEN = (0, 255, 0)
-BLUE = (0, 0, 255)
 YELLOW = (255, 255, 0)
+ROAD_COLOR = (50, 50, 50)
+LINE_COLOR = (255, 255, 255)
+BORDER_COLOR = (255, 0, 0)
+MAX_OBSTACLES = 3  # Maximum number of obstacles per row
 
 # Create the screen
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Racing Game")
 
+# Function to scale images while maintaining aspect ratio
+def scale_image(image, target_width, target_height):
+    original_width, original_height = image.get_size()
+    aspect_ratio = original_width / original_height
+
+    if target_width / target_height > aspect_ratio:
+        new_height = target_height
+        new_width = int(target_height * aspect_ratio)
+    else:
+        new_width = target_width
+        new_height = int(target_width / aspect_ratio)
+
+    return pygame.transform.smoothscale(image, (new_width, new_height))
+
 # Load car image
-car_image = pygame.Surface((CAR_WIDTH, CAR_HEIGHT))
-car_image.fill(RED)
+car_image = pygame.image.load('images/racer.png')
+car_image = scale_image(car_image, CAR_WIDTH, CAR_HEIGHT)
 car_rect = car_image.get_rect()
 car_rect.center = (WIDTH // 2, HEIGHT - CAR_HEIGHT // 2 - 10)
 
+# Load obstacle images
+obstacle_images = [
+    pygame.image.load('images/car_red.png'),
+    pygame.image.load('images/car_blue.png'),
+    pygame.image.load('images/car_green.png')
+]
+obstacle_images = [scale_image(img, OBSTACLE_WIDTH, OBSTACLE_HEIGHT) for img in obstacle_images]
+
 # Function to create obstacles
-def create_obstacle():
-    obstacle_color = random.choice([WHITE, GREEN, BLUE, YELLOW])
-    obstacle = pygame.Surface((OBSTACLE_WIDTH, OBSTACLE_HEIGHT))
-    obstacle.fill(obstacle_color)
-    obstacle_rect = obstacle.get_rect()
-    obstacle_rect.x = random.randint(0, WIDTH - OBSTACLE_WIDTH)
-    obstacle_rect.y = -OBSTACLE_HEIGHT
-    return obstacle, obstacle_rect
+def create_obstacle(existing_obstacles):
+    while True:
+        obstacle_image = random.choice(obstacle_images)
+        obstacle_rect = obstacle_image.get_rect()
+        obstacle_rect.x = random.randint(50, WIDTH - OBSTACLE_WIDTH - 50)
+        obstacle_rect.y = -OBSTACLE_HEIGHT
+        
+        # Check for overlap
+        if not any(obstacle_rect.colliderect(o[1]) for o in existing_obstacles):
+            return obstacle_image, obstacle_rect
 
 # Create an initial list of obstacles
-obstacles = [create_obstacle() for _ in range(5)]
+obstacles = []
+for _ in range(MAX_OBSTACLES):
+    obstacle = create_obstacle(obstacles)
+    obstacles.append(obstacle)
 
 # Function to display text
 def display_text(text, size, color, x, y):
@@ -52,7 +80,6 @@ clock = pygame.time.Clock()
 running = True
 game_active = False
 start_time = 0
-best_time = None
 obstacle_speed = 5
 increase_difficulty_interval = 5000  # milliseconds
 
@@ -72,10 +99,9 @@ def start_screen():
                 waiting = False
 
 # Game over screen
-def game_over_screen(final_time, best_time):
+def game_over_screen(final_time):
     screen.fill(BLACK)
     display_text(f"Your time: {final_time:.2f} seconds", 48, WHITE, WIDTH // 2, HEIGHT // 2 - 50)
-    display_text(f"Best time: {best_time:.2f} seconds", 48, WHITE, WIDTH // 2, HEIGHT // 2 + 10)
     display_text("Press any key to play again", 36, WHITE, WIDTH // 2, HEIGHT // 2 + 70)
     pygame.display.flip()
     waiting = True
@@ -93,7 +119,10 @@ start_screen()
 while running:
     if not game_active:
         start_time = pygame.time.get_ticks()
-        obstacles = [create_obstacle() for _ in range(5)]
+        obstacles = []
+        for _ in range(MAX_OBSTACLES):
+            obstacle = create_obstacle(obstacles)
+            obstacles.append(obstacle)
         car_rect.center = (WIDTH // 2, HEIGHT - CAR_HEIGHT // 2 - 10)
         obstacle_speed = 5
         game_active = True
@@ -105,9 +134,9 @@ while running:
 
     # Handle car movement
     keys = pygame.key.get_pressed()
-    if keys[pygame.K_LEFT] and car_rect.left > 0:
+    if keys[pygame.K_LEFT] and car_rect.left > 50:
         car_rect.x -= 5
-    if keys[pygame.K_RIGHT] and car_rect.right < WIDTH:
+    if keys[pygame.K_RIGHT] and car_rect.right < WIDTH - 50:
         car_rect.x += 5
     if keys[pygame.K_UP] and car_rect.top > 0:
         car_rect.y -= 5
@@ -119,20 +148,26 @@ while running:
         obstacle_rect.y += obstacle_speed
         if obstacle_rect.top > HEIGHT:
             obstacles.remove((obstacle, obstacle_rect))
-            obstacles.append(create_obstacle())
+            new_obstacle = create_obstacle(obstacles)
+            obstacles.append(new_obstacle)
 
     # Check for collisions
     for obstacle, obstacle_rect in obstacles:
         if car_rect.colliderect(obstacle_rect):
             game_active = False
             final_time = (pygame.time.get_ticks() - start_time) / 1000
-            if best_time is None or final_time < best_time:
-                best_time = final_time
-            game_over_screen(final_time, best_time)
+            game_over_screen(final_time)
             start_screen()
 
     # Clear the screen
-    screen.fill(BLACK)
+    screen.fill(ROAD_COLOR)
+
+    # Draw road lines
+    pygame.draw.rect(screen, LINE_COLOR, (WIDTH // 2 - 5, 0, 10, HEIGHT))
+
+    # Draw borders
+    pygame.draw.rect(screen, BORDER_COLOR, (0, 0, 50, HEIGHT))
+    pygame.draw.rect(screen, BORDER_COLOR, (WIDTH - 50, 0, 50, HEIGHT))
 
     # Draw the car
     screen.blit(car_image, car_rect)
