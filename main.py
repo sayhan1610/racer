@@ -10,6 +10,7 @@ WIDTH, HEIGHT = 400, 600
 FPS = 60
 CAR_WIDTH, CAR_HEIGHT = 50, 50
 OBSTACLE_WIDTH, OBSTACLE_HEIGHT = 50, 50
+POWERUP_WIDTH, POWERUP_HEIGHT = 30, 30
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 YELLOW = (255, 255, 0)
@@ -17,6 +18,10 @@ ROAD_COLOR = (50, 50, 50)
 LINE_COLOR = (255, 255, 255)
 BORDER_COLOR = (255, 0, 0)
 MAX_OBSTACLES = 3  # Maximum number of obstacles per row
+INITIAL_SPEED = 5  # Initial speed of the obstacles
+BRAKE_COOLDOWN = 15000  # 15 seconds in milliseconds
+POWERUP_INTERVAL = 30000  # 30 seconds in milliseconds
+INVINCIBILITY_DURATION = 10000  # 10 seconds in milliseconds
 
 # Create the screen
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -37,18 +42,23 @@ def scale_image(image, target_width, target_height):
     return pygame.transform.smoothscale(image, (new_width, new_height))
 
 # Load car image
-car_image = pygame.image.load('images/racer.png')
+car_image = pygame.image.load('images/racer.png').convert_alpha()
 car_image = scale_image(car_image, CAR_WIDTH, CAR_HEIGHT)
 car_rect = car_image.get_rect()
 car_rect.center = (WIDTH // 2, HEIGHT - CAR_HEIGHT // 2 - 10)
 
 # Load obstacle images
 obstacle_images = [
-    pygame.image.load('images/car_red.png'),
-    pygame.image.load('images/car_blue.png'),
-    pygame.image.load('images/car_green.png')
+    pygame.image.load('images/car_red.png').convert_alpha(),
+    pygame.image.load('images/car_blue.png').convert_alpha(),
+    pygame.image.load('images/car_green.png').convert_alpha()
 ]
 obstacle_images = [scale_image(img, OBSTACLE_WIDTH, OBSTACLE_HEIGHT) for img in obstacle_images]
+
+# Load power-up image
+powerup_image = pygame.image.load('images/power.png').convert_alpha()
+powerup_image = scale_image(powerup_image, POWERUP_WIDTH, POWERUP_HEIGHT)
+powerup_rect = powerup_image.get_rect()
 
 # Function to create obstacles
 def create_obstacle(existing_obstacles):
@@ -62,11 +72,11 @@ def create_obstacle(existing_obstacles):
         if not any(obstacle_rect.colliderect(o[1]) for o in existing_obstacles):
             return obstacle_image, obstacle_rect
 
-# Create an initial list of obstacles
-obstacles = []
-for _ in range(MAX_OBSTACLES):
-    obstacle = create_obstacle(obstacles)
-    obstacles.append(obstacle)
+# Function to create power-up
+def create_powerup():
+    powerup_rect.x = random.randint(60, WIDTH - powerup_rect.width - 60)  # Ensuring it drops within the road
+    powerup_rect.y = -powerup_rect.height
+    return powerup_rect
 
 # Function to display text
 def display_text(text, size, color, x, y):
@@ -74,14 +84,6 @@ def display_text(text, size, color, x, y):
     text_surface = font.render(text, True, color)
     text_rect = text_surface.get_rect(center=(x, y))
     screen.blit(text_surface, text_rect)
-
-# Main game loop
-clock = pygame.time.Clock()
-running = True
-game_active = False
-start_time = 0
-obstacle_speed = 5
-increase_difficulty_interval = 5000  # milliseconds
 
 # Start screen
 def start_screen():
@@ -113,6 +115,22 @@ def game_over_screen(final_time):
             if event.type == pygame.KEYDOWN:
                 waiting = False
 
+# Main game loop
+clock = pygame.time.Clock()
+running = True
+game_active = False
+start_time = 0
+obstacle_speed = INITIAL_SPEED
+increase_difficulty_interval = 5000  # milliseconds
+
+# Variables for brake functionality
+brake_last_used = -BRAKE_COOLDOWN  # Initialize to allow immediate use
+
+# Variables for power-up functionality
+powerup_active = False
+powerup_last_drop = 0
+invincibility_end_time = 0
+
 # Show start screen initially
 start_screen()
 
@@ -124,7 +142,12 @@ while running:
             obstacle = create_obstacle(obstacles)
             obstacles.append(obstacle)
         car_rect.center = (WIDTH // 2, HEIGHT - CAR_HEIGHT // 2 - 10)
-        obstacle_speed = 5
+        obstacle_speed = INITIAL_SPEED
+        brake_last_used = -BRAKE_COOLDOWN  # Reset brake cooldown timer
+        powerup_active = False
+        invincibility_end_time = 0
+        powerup_last_drop = start_time
+        powerup_rect.y = -powerup_rect.height  # Hide power-up initially
         game_active = True
 
     # Handle events
@@ -142,6 +165,11 @@ while running:
         car_rect.y -= 5
     if keys[pygame.K_DOWN] and car_rect.bottom < HEIGHT:
         car_rect.y += 5
+    if keys[pygame.K_SPACE]:
+        current_time = pygame.time.get_ticks()
+        if current_time - brake_last_used >= BRAKE_COOLDOWN:
+            obstacle_speed = INITIAL_SPEED
+            brake_last_used = current_time
 
     # Move obstacles
     for obstacle, obstacle_rect in obstacles:
@@ -151,13 +179,30 @@ while running:
             new_obstacle = create_obstacle(obstacles)
             obstacles.append(new_obstacle)
 
+    # Move power-up
+    if pygame.time.get_ticks() - powerup_last_drop >= POWERUP_INTERVAL:
+        powerup_last_drop = pygame.time.get_ticks()
+        create_powerup()
+
+    if powerup_rect.y < HEIGHT:
+        powerup_rect.y += obstacle_speed
+
     # Check for collisions
-    for obstacle, obstacle_rect in obstacles:
-        if car_rect.colliderect(obstacle_rect):
-            game_active = False
-            final_time = (pygame.time.get_ticks() - start_time) / 1000
-            game_over_screen(final_time)
-            start_screen()
+    if car_rect.colliderect(powerup_rect):
+        powerup_active = True
+        invincibility_end_time = pygame.time.get_ticks() + INVINCIBILITY_DURATION
+        powerup_rect.y = -powerup_rect.height  # Hide power-up after collecting
+
+    if powerup_active and pygame.time.get_ticks() >= invincibility_end_time:
+        powerup_active = False
+
+    if not powerup_active:
+        for obstacle, obstacle_rect in obstacles:
+            if car_rect.colliderect(obstacle_rect):
+                game_active = False
+                final_time = (pygame.time.get_ticks() - start_time) / 1000
+                game_over_screen(final_time)
+                start_screen()
 
     # Clear the screen
     screen.fill(ROAD_COLOR)
@@ -176,10 +221,19 @@ while running:
     for obstacle, obstacle_rect in obstacles:
         screen.blit(obstacle, obstacle_rect)
 
+    # Draw power-up
+    if powerup_rect.y < HEIGHT:
+        screen.blit(powerup_image, powerup_rect)
+
     # Draw the timer
     elapsed_time = (pygame.time.get_ticks() - start_time) / 1000
     timer_text = pygame.font.SysFont(None, 36).render(f'Time: {elapsed_time:.2f}', True, WHITE)
     screen.blit(timer_text, (10, 10))
+
+    # Draw brake cooldown timer
+    cooldown_remaining = max(0, (BRAKE_COOLDOWN - (pygame.time.get_ticks() - brake_last_used)) / 1000)
+    brake_text = pygame.font.SysFont(None, 36).render(f'Brake CD: {cooldown_remaining:.2f}s', True, WHITE)
+    screen.blit(brake_text, (10, 50))
 
     # Increase difficulty over time
     if pygame.time.get_ticks() % increase_difficulty_interval < FPS:
