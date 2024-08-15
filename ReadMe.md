@@ -32,16 +32,7 @@ Racer is an exciting 2D racing game where players navigate a car to avoid obstac
    cd racer
    ```
 
-2. Install the required dependencies:
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. Ensure you have the required assets:
-   - Place your car images (`racer.png`, `car_red.png`, `car_blue.png`, `car_green.png`) in the `images` folder.
-   - Place your audio files (`brake.mp3`, `car.mp3`, `crash.mp3`, `power.mp3`) in the `audio` folder.
-
+2. To get started with the Paper Airplane Game, simply run the installation files provided.
 ## Usage
 
 To start the game, run the following command:
